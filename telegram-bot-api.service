@@ -1,0 +1,14 @@
+[Unit]
+Description=Локальный сервер Telegram Bot API (файлы до 2 ГБ) для lecture-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=user
+EnvironmentFile=/opt/lecture-bot/.botapi.env
+ExecStart=/usr/local/bin/telegram-bot-api --local --http-ip-address=127.0.0.1 --http-port=8081 --dir=/var/lib/telegram-bot-api --temp-dir=/var/lib/telegram-bot-api/tmp --verbosity=1
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

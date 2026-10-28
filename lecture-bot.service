@@ -1,0 +1,19 @@
+[Unit]
+Description=lecture-bot — бот-конспектор лекций и вебинаров
+After=network-online.target ollama.service telegram-bot-api.service
+Wants=network-online.target
+
+[Service]
+User=user
+WorkingDirectory=/opt/lecture-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=LD_LIBRARY_PATH=/opt/lecture-bot/.venv/lib/python3.14/site-packages/nvidia/cublas/lib:/opt/lecture-bot/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib
+ExecStart=/opt/lecture-bot/.venv/bin/python bot.py
+Nice=10
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

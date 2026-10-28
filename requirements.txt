@@ -1,0 +1,6 @@
+aiogram==3.31.0
+httpx==0.28.1
+faster-whisper==1.2.1
+python-docx==1.2.0
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

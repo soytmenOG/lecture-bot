@@ -1,0 +1,5 @@
+.env
+.botapi.env
+data/
+__pycache__/
+.venv/

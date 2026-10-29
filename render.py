@@ -10,9 +10,11 @@ from i18n import WARN
 
 DOCX = {
     "ru": {"doubt": "Слова, в которых распознавание не уверено: ", "article": "Черновик статьи",
-           "transcript": "Расшифровка", "foot": "Конспект сделан бесплатно в Telegram-боте @{bot} — t.me/{bot}?start=docx"},
+           "transcript": "Расшифровка", "foot": "Конспект сделан бесплатно в Telegram-боте @{bot} — t.me/{bot}?start=docx",
+           "foot_text": "Расшифровка сделана бесплатно в Telegram-боте @{bot} — t.me/{bot}?start=docx"},
     "en": {"doubt": "Words speech recognition is unsure about: ", "article": "Draft article",
-           "transcript": "Transcript", "foot": "Notes made for free with the Telegram bot @{bot} — t.me/{bot}?start=docx"},
+           "transcript": "Transcript", "foot": "Notes made for free with the Telegram bot @{bot} — t.me/{bot}?start=docx",
+           "foot_text": "Transcribed for free with the Telegram bot @{bot} — t.me/{bot}?start=docx"},
 }
 
 
@@ -93,6 +95,29 @@ def make_docx(title: str, summary: str, article: str, transcript: str, doubt: li
     _add_md(doc, article, shift=1)
     doc.add_page_break()
     doc.add_heading(t["transcript"], 1)
+    for para in transcript.split("\n\n"):
+        doc.add_paragraph(para)
+    buf = io.BytesIO()
+    doc.core_properties.title = title
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def make_transcript_docx(title: str, transcript: str, doubt: list[str], warn: str, bot: str = "",
+                         lang: str = "ru") -> bytes:
+    """Только дословная расшифровка — без конспекта и статьи."""
+    t = DOCX[lang]
+    doc = Document()
+    doc.styles["Normal"].font.name = "Calibri"
+    doc.styles["Normal"].font.size = Pt(11)
+    if bot:
+        foot = doc.sections[0].footer.paragraphs[0]
+        foot.text = t["foot_text"].format(bot=bot)
+        foot.runs[0].font.size = Pt(8)
+    doc.add_heading(title, 1)
+    doc.add_paragraph(warn).runs[0].italic = True
+    if doubt:
+        doc.add_paragraph(t["doubt"] + ", ".join(doubt)).runs[0].italic = True
     for para in transcript.split("\n\n"):
         doc.add_paragraph(para)
     buf = io.BytesIO()

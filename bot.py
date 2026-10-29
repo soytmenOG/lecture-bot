@@ -4,6 +4,7 @@
 Приватность: запись и тексты удаляются сразу после отправки, в базе только Telegram ID и счётчики.
 """
 import asyncio
+import html
 import logging
 import os
 import sqlite3
@@ -31,7 +32,8 @@ from aiogram.client.default import DefaultBotProperties  # noqa: E402
 from aiogram.client.session.aiohttp import AiohttpSession  # noqa: E402
 from aiogram.client.telegram import TelegramAPIServer  # noqa: E402
 from aiogram.filters import Command, CommandObject, CommandStart  # noqa: E402
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message  # noqa: E402
+from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButton,  # noqa: E402
+                           InlineKeyboardMarkup, Message)
 from urllib.parse import quote  # noqa: E402
 
 import notes  # noqa: E402
@@ -114,6 +116,7 @@ class Job:
     seconds: float
     status: Message
     lang: str = "ru"                  # язык интерфейса пользователя
+    mode: str = "notes"               # notes — конспект и статья, text — только дословная расшифровка
     cancelled: bool = False
     started: float = field(default_factory=time.time)
 
@@ -121,6 +124,8 @@ class Job:
 queue: asyncio.Queue[Job] = asyncio.Queue()
 pending: list[Job] = []          # порядок очереди (для «вы №N»)
 active: dict[int, Job] = {}      # у каждого пользователя не больше одной записи сразу
+# запись прислана, но режим ещё не выбран: uid → (file_id, имя, длительность, id сообщения с кнопками)
+choices: dict[int, tuple[str, str, float, int]] = {}
 
 
 BOT_USERNAME = ""
@@ -210,6 +215,15 @@ async def process(bot: Bot, job: Job) -> None:
             text, doubt, spoken = await asyncio.to_thread(
                 transcribe.transcribe, audio, progress, lambda: job.cancelled)
             del audio
+            if job.mode == "text":
+                if not text.strip():
+                    await st.set(t["no_speech"], True)
+                    return
+                await send_transcript(bot, job, text, doubt)
+                await st.set(t["text_done"].format(len=fmt_min(seconds, ui), work=fmt_min(time.time() - t0, ui)),
+                             True)
+                ok = True
+                return
             if len(text) < 200:
                 await st.set(t["little_text"], True)
                 return
@@ -253,6 +267,28 @@ async def process(bot: Bot, job: Job) -> None:
                 os.remove(src)
             record(job.uid, ok, seconds, time.time() - t0)
             log.info("uid=%s ok=%s запись=%.0fс работа=%.0fс", job.uid, ok, seconds, time.time() - t0)
+
+
+async def send_transcript(bot: Bot, job: Job, text: str, doubt: list[str]) -> None:
+    """Режим «только расшифровка»: дословный текст в чат (если не слишком длинный) и файл Word."""
+    t = T[job.lang]
+    stem = os.path.splitext(job.name)[0]
+    title = stem if stem not in ("voice", "video_note", "audio", "video", "file") else render.DOCX[job.lang]["transcript"]
+    warn = t["text_warn"]
+    if doubt:
+        warn += "\n\n" + t["doubt"] + ", ".join(doubt[:20])
+    await bot.send_message(job.chat_id, html.escape(warn))
+    parts = render.split_html(html.escape(text))
+    if len(parts) <= 3:
+        for part in parts:
+            await bot.send_message(job.chat_id, part)
+    else:
+        await bot.send_message(job.chat_id, t["text_long"])
+    data = await asyncio.to_thread(render.make_transcript_docx, title, text, doubt, t["text_warn"],
+                                   BOT_USERNAME, job.lang)
+    await bot.send_document(job.chat_id, BufferedInputFile(data, render.safe_filename(title) + ".docx"),
+                            caption=t["text_caption"])
+    await bot.send_message(job.chat_id, t["share_ask"], reply_markup=share_kb(job.lang))
 
 
 async def worker(bot: Bot) -> None:
@@ -370,9 +406,30 @@ async def on_media(m: Message) -> None:
     if duration and duration > MAX_MINUTES * 60:
         await m.answer(t["too_long"].format(max=MAX_MINUTES))
         return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["btn_notes"], callback_data="notes")],
+                                               [InlineKeyboardButton(text=t["btn_text"], callback_data="text")]])
+    ask = await m.reply(t["choose"], reply_markup=kb)
+    choices[uid] = (file_id, name, duration or 0, ask.message_id)   # прежний невыбранный файл забываем
+
+
+@dp.callback_query(F.data.in_({"notes", "text"}))
+async def on_choice(q: CallbackQuery) -> None:
+    ui = ui_lang(q.from_user.language_code)
+    t = T[ui]
+    uid = q.from_user.id
+    ch = choices.get(uid)
+    if not ch or not isinstance(q.message, Message) or ch[3] != q.message.message_id:
+        await q.answer(t["expired"], show_alert=True)
+        return
+    if uid in active:
+        await q.answer(t["busy"], show_alert=True)
+        return
+    del choices[uid]
+    await q.answer()
+    file_id, name, duration, _ = ch
     busy = len(active)          # у каждого не больше одной записи, так что это и работающая, и ждущие
-    status = await m.reply(t["queued"].format(n=busy) if busy else t["accepted"])
-    job = Job(uid, m.chat.id, file_id, name, duration or 0, status, ui)
+    await q.message.edit_text(t["queued"].format(n=busy) if busy else t["accepted"])
+    job = Job(uid, q.message.chat.id, file_id, name, duration, q.message, ui, q.data)
     active[uid] = job
     pending.append(job)
     await queue.put(job)
@@ -396,7 +453,7 @@ async def main() -> None:
     log.info("бот @%s запущен; Bot API: %s; расшифровка: %s", me.username, BOT_API_URL or "облако (20 МБ)",
              transcribe.device())
     asyncio.create_task(worker(bot))
-    await dp.start_polling(bot, allowed_updates=["message"])
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 
 if __name__ == "__main__":

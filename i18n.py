@@ -16,6 +16,8 @@ T = {
                   "• главные выводы\n"
                   "• черновик статьи для блога\n"
                   "• файл Word со всем этим и полной расшифровкой\n\n"
+                  "Нужен только текст? После отправки записи нажмите «📄 Только расшифровка» — "
+                  "получите дословный текст без конспекта, так быстрее.\n\n"
                   "Понимаю русский и английский: конспект будет на языке записи.\n"
                   "Бесплатно. Запись до {max_min} мин, файл до {max_mb}.\n\n"
                   "⚠️ Нейросеть может ошибаться в терминах, именах и цифрах — проверяйте их.\n"
@@ -59,6 +61,16 @@ T = {
         "steps": {"read": "Читаю расшифровку: часть {i} из {n}", "merge": "Объединяю заметки",
                   "final": "Пишу конспект, термины и выводы", "article": "Пишу черновик статьи"},
         "cpu": "процессор", "gpu": "видеокарта",
+        "choose": "Что сделать с записью?",
+        "btn_notes": "🧠 Конспект и статья",
+        "btn_text": "📄 Только расшифровка",
+        "expired": "Эта кнопка устарела — пришлите запись ещё раз.",
+        "no_speech": "❌ Не удалось разобрать речь в записи.",
+        "text_done": "✅ Расшифровка готова: {len} записи за {work}.",
+        "text_warn": ("⚠️ Дословная автоматическая расшифровка, нейросеть текст не правила. "
+                      "Возможны ошибки в терминах, именах и цифрах."),
+        "text_long": "Текст длинный, поэтому целиком он в файле ниже.",
+        "text_caption": "Дословная расшифровка в файле Word.",
     },
     "en": {
         "hello": ("👋 I turn lectures and webinars into notes.\n\n"
@@ -68,6 +80,8 @@ T = {
                   "• main takeaways\n"
                   "• a draft blog article\n"
                   "• a Word file with all of the above plus the full transcript\n\n"
+                  "Only need the text? After sending a recording, tap \"📄 Transcript only\" — "
+                  "you'll get a word-for-word transcript without notes, which is faster.\n\n"
                   "Works with English and Russian: notes come in the language of the recording.\n"
                   "Free. Recordings up to {max_min} min, files up to {max_mb}.\n\n"
                   "⚠️ AI can get terms, names and numbers wrong — please double-check them.\n"
@@ -111,6 +125,16 @@ T = {
         "steps": {"read": "Reading the transcript: part {i} of {n}", "merge": "Merging notes",
                   "final": "Writing notes, terms and takeaways", "article": "Writing the draft article"},
         "cpu": "CPU", "gpu": "GPU",
+        "choose": "What should I do with the recording?",
+        "btn_notes": "🧠 Notes and article",
+        "btn_text": "📄 Transcript only",
+        "expired": "This button has expired — please send the recording again.",
+        "no_speech": "❌ Couldn't recognise any speech in the recording.",
+        "text_done": "✅ Transcript ready: {len} of audio in {work}.",
+        "text_warn": ("⚠️ Word-for-word automatic transcript, not edited by AI. "
+                      "Terms, names and numbers may contain errors."),
+        "text_long": "The text is long, so the full version is in the file below.",
+        "text_caption": "Word-for-word transcript in a Word file.",
     },
 }
 

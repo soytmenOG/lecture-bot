@@ -47,6 +47,7 @@ BOT_API_URL = os.getenv("BOT_API_URL", "")            # свой сервер Bo
 MAX_MINUTES = int(os.getenv("MAX_MINUTES", "240"))
 DB_PATH = os.getenv("DB_PATH", os.path.join(BASE, "data", "bot.db"))
 MAX_MB = 2000 if BOT_API_URL else 20
+PRIVATE = os.getenv("PRIVATE", "") == "1"             # закрытый режим: бот работает только для владельца
 
 MEDIA_EXT = {".mp3", ".m4a", ".ogg", ".oga", ".opus", ".wav", ".flac", ".aac", ".wma", ".amr", ".webm",
              ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".m4v", ".3gp", ".mpeg", ".mpg"}
@@ -103,6 +104,24 @@ def record(uid: int, ok: bool, seconds: float, work: float) -> None:
                   (int(ok), int(seconds), int(work), transcribe.device()))
         if ok:
             c.execute("UPDATE users SET jobs=jobs+1, seconds=seconds+? WHERE id=?", (int(seconds), uid))
+
+
+async def only_owner(handler, event, data):
+    """В закрытом режиме пропускает только владельца и его ссылку /start admin_…"""
+    user = event.from_user
+    if not PRIVATE or (user and is_admin(user.id)):
+        return await handler(event, data)
+    if isinstance(event, Message) and (event.text or "").startswith("/start admin_"):
+        return await handler(event, data)
+    t = T[ui_lang(user.language_code if user else None)]
+    if isinstance(event, CallbackQuery):
+        await event.answer(t["closed"], show_alert=True)
+    else:
+        await event.answer(t["closed"])
+
+
+dp.message.outer_middleware(only_owner)
+dp.callback_query.outer_middleware(only_owner)
 
 
 # ---------- очередь ----------

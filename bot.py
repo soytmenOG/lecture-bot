@@ -29,6 +29,7 @@ load_env(os.path.join(BASE, ".env"))
 
 from aiogram import Bot, Dispatcher, F  # noqa: E402
 from aiogram.client.default import DefaultBotProperties  # noqa: E402
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware  # noqa: E402
 from aiogram.client.session.aiohttp import AiohttpSession  # noqa: E402
 from aiogram.client.telegram import TelegramAPIServer  # noqa: E402
 from aiogram.filters import Command, CommandObject, CommandStart  # noqa: E402
@@ -49,6 +50,7 @@ DB_PATH = os.getenv("DB_PATH", os.path.join(BASE, "data", "bot.db"))
 MAX_MB = 2000 if BOT_API_URL else 20
 PRIVATE = os.getenv("PRIVATE", "") == "1"             # закрытый режим: бот работает только для владельца
 OWNER_IDS = {int(x) for x in os.getenv("OWNER_IDS", "").replace(",", " ").split()}   # Telegram ID владельцев
+DELETE_AFTER_H = float(os.getenv("DELETE_AFTER_HOURS", "24"))   # через сколько часов стирать переписку; 0 — не стирать
 
 MEDIA_EXT = {".mp3", ".m4a", ".ogg", ".oga", ".opus", ".wav", ".flac", ".aac", ".wma", ".amr", ".webm",
              ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".m4v", ".3gp", ".mpeg", ".mpg"}
@@ -77,6 +79,51 @@ def init_db() -> None:
             day TEXT, ok INTEGER, seconds INTEGER, work_seconds INTEGER, device TEXT)""")
         # откуда приходят новые люди: ссылки t.me/бот?start=метка — только счётчики, без привязки к человеку
         c.execute("CREATE TABLE IF NOT EXISTS sources (src TEXT PRIMARY KEY, users INTEGER DEFAULT 0)")
+        # какие сообщения переписки и когда стереть — только номера, без текста
+        c.execute("""CREATE TABLE IF NOT EXISTS trash (
+            chat_id INTEGER, msg_id INTEGER, at REAL, PRIMARY KEY (chat_id, msg_id))""")
+
+
+def to_trash(chat_id: int, msg_id: int) -> None:
+    if DELETE_AFTER_H > 0:
+        with db() as c:
+            c.execute("INSERT OR IGNORE INTO trash VALUES (?, ?, ?)",
+                      (chat_id, msg_id, time.time() + DELETE_AFTER_H * 3600))
+
+
+class TrashOutgoing(BaseRequestMiddleware):
+    """Запоминает каждое сообщение, которое отправил бот, чтобы потом стереть."""
+
+    async def __call__(self, make_request, bot, method):
+        result = await make_request(bot, method)
+        if isinstance(result, Message) and result.chat.type == "private":
+            to_trash(result.chat.id, result.message_id)
+        return result
+
+
+async def cleaner(bot: Bot) -> None:
+    """Раз в 5 минут стирает в чатах сообщения, у которых вышел срок (и ваши, и бота)."""
+    while True:
+        try:
+            with db() as c:
+                rows = c.execute("SELECT chat_id, msg_id FROM trash WHERE at <= ? ORDER BY chat_id",
+                                 (time.time(),)).fetchall()
+            chats: dict[int, list[int]] = {}
+            for chat_id, msg_id in rows:
+                chats.setdefault(chat_id, []).append(msg_id)
+            for chat_id, ids in chats.items():
+                for i in range(0, len(ids), 100):          # Telegram принимает до 100 за раз
+                    try:
+                        await bot.delete_messages(chat_id, ids[i:i + 100])
+                    except Exception as e:  # noqa: BLE001 — старше 48 ч или уже удалены
+                        log.warning("не удалось стереть %d сообщений: %s", len(ids[i:i + 100]), e)
+            if rows:
+                with db() as c:
+                    c.executemany("DELETE FROM trash WHERE chat_id=? AND msg_id=?", rows)
+                log.info("стёрто сообщений: %d", len(rows))
+        except Exception:  # noqa: BLE001
+            log.exception("ошибка автоудаления")
+        await asyncio.sleep(300)
 
 
 def count_source(uid: int, src: str) -> None:
@@ -112,7 +159,8 @@ def record(uid: int, ok: bool, seconds: float, work: float) -> None:
 async def only_owner(handler, event, data):
     """В закрытом режиме пропускает только владельца и его ссылку /start admin_…"""
     user = event.from_user
-    log.info("входящее %s uid=%s", type(event).__name__, user.id if user else None)
+    if isinstance(event, Message) and event.chat.type == "private":
+        to_trash(event.chat.id, event.message_id)
     if not PRIVATE or (user and is_admin(user.id)):
         return await handler(event, data)
     if not OWNER_IDS and isinstance(event, Message) and (event.text or "").startswith("/start admin_"):
@@ -170,6 +218,10 @@ def fmt_min(seconds: float, lang: str = "ru") -> str:
     t = T[lang]
     m = max(1, round(seconds / 60))
     return f"{m} {t['min']}" if m < 60 else f"{m // 60} {t['h']} {m % 60:02d} {t['min']}"
+
+
+def autodel_note(lang: str) -> str:
+    return "\n\n" + T[lang]["autodel"].format(h=f"{DELETE_AFTER_H:g}") if DELETE_AFTER_H > 0 else ""
 
 
 def size_label(lang: str) -> str:
@@ -276,7 +328,7 @@ async def process(bot: Bot, job: Job) -> None:
             data = await asyncio.to_thread(render.make_docx, title, summary, article, text, doubt, BOT_USERNAME, lang)
             await bot.send_document(job.chat_id, BufferedInputFile(data, render.safe_filename(title) + ".docx"),
                                     caption=(T[lang]["docx_caption"] + "\n\n" + warn)[:1020])
-            await bot.send_message(job.chat_id, t["share_ask"], reply_markup=share_kb(ui))
+            await bot.send_message(job.chat_id, t["share_ask"] + autodel_note(ui), reply_markup=share_kb(ui))
             ok = True
         except transcribe.Cancelled:
             await st.set(t["cancelled"], True)
@@ -312,7 +364,7 @@ async def send_transcript(bot: Bot, job: Job, text: str, doubt: list[str]) -> No
                                    BOT_USERNAME, job.lang)
     await bot.send_document(job.chat_id, BufferedInputFile(data, render.safe_filename(title) + ".docx"),
                             caption=t["text_caption"])
-    await bot.send_message(job.chat_id, t["share_ask"], reply_markup=share_kb(job.lang))
+    await bot.send_message(job.chat_id, t["share_ask"] + autodel_note(job.lang), reply_markup=share_kb(job.lang))
 
 
 async def worker(bot: Bot) -> None:
@@ -339,8 +391,6 @@ async def cmd_start(m: Message, command: CommandObject) -> None:
     if not arg.startswith("admin_"):
         count_source(m.from_user.id, arg)
     touch_user(m.from_user.id)
-    if arg.startswith("admin_"):
-        log.info("ссылка владельца от uid=%s, код верный: %s", m.from_user.id, arg == f"admin_{ADMIN_CODE}")
     if ADMIN_CODE and not OWNER_IDS and arg == f"admin_{ADMIN_CODE}":   # владелец задан в .env — ссылка не нужна
         with db() as c:
             used = c.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone()
@@ -474,12 +524,15 @@ async def main() -> None:
     await asyncio.to_thread(transcribe.load)
     session = AiohttpSession(api=TelegramAPIServer.from_base(BOT_API_URL, is_local=True)) if BOT_API_URL else None
     bot = Bot(BOT_TOKEN, session=session, default=DefaultBotProperties(parse_mode="HTML"))
+    bot.session.middleware(TrashOutgoing())
     global BOT_USERNAME
     me = await bot.get_me()
     BOT_USERNAME = me.username
     log.info("бот @%s запущен; Bot API: %s; расшифровка: %s", me.username, BOT_API_URL or "облако (20 МБ)",
              transcribe.device())
     asyncio.create_task(worker(bot))
+    if DELETE_AFTER_H > 0:
+        asyncio.create_task(cleaner(bot))
     await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 

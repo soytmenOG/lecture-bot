@@ -53,4 +53,4 @@ bash set_api.sh            # необязательно: api_id/api_hash с my.t
 
 Нужна запущенная Ollama с моделью (по умолчанию `qwen3-vl:8b-instruct`, меняется переменной `MODEL` в `.env`). Для `set_api.sh` сначала соберите [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) в `/usr/local/bin`.
 
-Настройки в `.env`: `MODEL`, `NUM_CTX`, `WHISPER_MODEL`, `WHISPER_DEVICE` (auto/cuda/cpu), `WHISPER_INDEX`, `MAX_MINUTES`, `BOT_API_URL`, `PRIVATE` (1 — бот отвечает только владельцу, остальным пишет, что закрыт), `OWNER_IDS` (Telegram ID владельцев через запятую).
+Настройки в `.env`: `MODEL`, `NUM_CTX`, `WHISPER_MODEL`, `WHISPER_DEVICE` (auto/cuda/cpu), `WHISPER_INDEX`, `MAX_MINUTES`, `BOT_API_URL`, `PRIVATE` (1 — бот отвечает только владельцу, остальным пишет, что закрыт), `OWNER_IDS` (Telegram ID владельцев через запятую), `DELETE_AFTER_HOURS` (через сколько часов бот стирает переписку в чате, и сообщения пользователя, и свои; по умолчанию 24, 0 — не стирать; Telegram позволяет боту удалять сообщения не старше 48 ч).

@@ -26,6 +26,7 @@ T = {
         "privacy": ("🔒 <b>Приватность</b>\n\n"
                     "• Всё считается на нашем собственном сервере, записи никуда не передаются.\n"
                     "• Файл, расшифровка и конспект удаляются сразу после отправки вам.\n"
+                    "• Сама переписка с ботом стирается через сутки.\n"
                     "• Храним только ваш Telegram ID и счётчики: сколько записей и минут обработано.\n"
                     "• Поэтому сохраните результат у себя — повторно мы его выдать не сможем."),
         "nothing": "Сейчас у вас ничего не обрабатывается.",
@@ -62,6 +63,7 @@ T = {
                   "final": "Пишу конспект, термины и выводы", "article": "Пишу черновик статьи"},
         "cpu": "процессор", "gpu": "видеокарта",
         "closed": "🔒 Бот сейчас закрыт и работает только для владельца.",
+        "autodel": "🕓 Через {h} ч вся эта переписка будет стёрта — сохраните файл Word у себя.",
         "choose": "Что сделать с записью?",
         "btn_notes": "🧠 Конспект и статья",
         "btn_text": "📄 Только расшифровка",
@@ -91,6 +93,7 @@ T = {
         "privacy": ("🔒 <b>Privacy</b>\n\n"
                     "• Everything runs on our own server; recordings are never sent anywhere else.\n"
                     "• The file, transcript and notes are deleted right after they are sent to you.\n"
+                    "• The chat with the bot itself is erased after 24 hours.\n"
                     "• We only keep your Telegram ID and counters: how many recordings and minutes.\n"
                     "• So save the result — we can't send it again."),
         "nothing": "Nothing of yours is being processed right now.",
@@ -127,6 +130,7 @@ T = {
                   "final": "Writing notes, terms and takeaways", "article": "Writing the draft article"},
         "cpu": "CPU", "gpu": "GPU",
         "closed": "🔒 This bot is currently private and works only for its owner.",
+        "autodel": "🕓 This whole chat will be erased in {h} h — save the Word file.",
         "choose": "What should I do with the recording?",
         "btn_notes": "🧠 Notes and article",
         "btn_text": "📄 Transcript only",

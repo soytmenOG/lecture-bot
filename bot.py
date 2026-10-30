@@ -48,6 +48,7 @@ MAX_MINUTES = int(os.getenv("MAX_MINUTES", "240"))
 DB_PATH = os.getenv("DB_PATH", os.path.join(BASE, "data", "bot.db"))
 MAX_MB = 2000 if BOT_API_URL else 20
 PRIVATE = os.getenv("PRIVATE", "") == "1"             # закрытый режим: бот работает только для владельца
+OWNER_IDS = {int(x) for x in os.getenv("OWNER_IDS", "").replace(",", " ").split()}   # Telegram ID владельцев
 
 MEDIA_EXT = {".mp3", ".m4a", ".ogg", ".oga", ".opus", ".wav", ".flac", ".aac", ".wma", ".amr", ".webm",
              ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".m4v", ".3gp", ".mpeg", ".mpg"}
@@ -93,6 +94,8 @@ def touch_user(uid: int) -> None:
 
 
 def is_admin(uid: int) -> bool:
+    if uid in OWNER_IDS:
+        return True
     with db() as c:
         r = c.execute("SELECT is_admin FROM users WHERE id=?", (uid,)).fetchone()
     return bool(r and r[0])
@@ -109,10 +112,12 @@ def record(uid: int, ok: bool, seconds: float, work: float) -> None:
 async def only_owner(handler, event, data):
     """В закрытом режиме пропускает только владельца и его ссылку /start admin_…"""
     user = event.from_user
+    log.info("входящее %s uid=%s", type(event).__name__, user.id if user else None)
     if not PRIVATE or (user and is_admin(user.id)):
         return await handler(event, data)
-    if isinstance(event, Message) and (event.text or "").startswith("/start admin_"):
+    if not OWNER_IDS and isinstance(event, Message) and (event.text or "").startswith("/start admin_"):
         return await handler(event, data)
+    log.info("закрытый режим: отказ uid=%s", user.id if user else None)
     t = T[ui_lang(user.language_code if user else None)]
     if isinstance(event, CallbackQuery):
         await event.answer(t["closed"], show_alert=True)
@@ -334,11 +339,14 @@ async def cmd_start(m: Message, command: CommandObject) -> None:
     if not arg.startswith("admin_"):
         count_source(m.from_user.id, arg)
     touch_user(m.from_user.id)
-    if ADMIN_CODE and arg == f"admin_{ADMIN_CODE}":
+    if arg.startswith("admin_"):
+        log.info("ссылка владельца от uid=%s, код верный: %s", m.from_user.id, arg == f"admin_{ADMIN_CODE}")
+    if ADMIN_CODE and not OWNER_IDS and arg == f"admin_{ADMIN_CODE}":   # владелец задан в .env — ссылка не нужна
         with db() as c:
             used = c.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone()
             if not used:
                 c.execute("UPDATE users SET is_admin=1 WHERE id=?", (m.from_user.id,))
+                log.info("владелец назначен: uid=%s", m.from_user.id)
                 await m.answer(t["owner"])
                 return
     await m.answer(t["hello"].format(max_min=MAX_MINUTES, max_mb=size_label(lang_of(m))))
